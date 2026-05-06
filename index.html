@@ -1450,6 +1450,13 @@
             void rootEl.offsetHeight;
             return {
                 ...base,
+                // Bulk sudah pakai addPage manual, jadi matikan pemisah otomatis dari CSS/html2pdf.
+                pagebreak: {
+                    mode: 'css',
+                    before: [],
+                    after: [],
+                    avoid: '.pdf-page'
+                },
                 html2canvas: {
                     ...base.html2canvas,
                     scale: 2,
@@ -1822,6 +1829,10 @@
                     const currentHTML = buildTranskripHTML(murid);
                     previewBulk.innerHTML = currentHTML;
                     const firstPage = previewBulk.querySelector('.pdf-page');
+                    if (firstPage) {
+                        firstPage.style.pageBreakAfter = 'auto';
+                        firstPage.style.breakAfter = 'auto';
+                    }
                     if (firstPage) firstPage.scrollIntoView({ block: 'nearest', behavior: 'instant' });
 
                     updateBulkPdfPrepProgress(step, dataKelas.length, `Merender: ${murid.nama} (${step}/${dataKelas.length})`);
@@ -1853,10 +1864,6 @@
                             .toPdf();
                     } else {
                         worker = worker
-                            .get('pdf')
-                            .then((pdf) => {
-                                pdf.addPage();
-                            })
                             .from(previewBulk)
                             .toContainer()
                             .toCanvas()
