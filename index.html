@@ -1788,30 +1788,27 @@
             const previewBulk = document.getElementById('preview-bulk-container');
             const previewWrap = document.getElementById('bulkPdfPrepPreviewWrap');
             const titleEl = document.getElementById('bulkPdfPrepTitle');
-            const finalBulkCollection = document.getElementById('final-bulk-collection');
 
-            if (!previewBulk || !previewWrap || !finalBulkCollection) {
+            if (!previewBulk || !previewWrap) {
                 alert('Kontainer pratinjau massal tidak ditemukan.');
                 return;
             }
 
             if (titleEl) titleEl.textContent = `Menyiapkan PDF — Kelas ${kelasDipilih}`;
             previewBulk.innerHTML = '';
-            finalBulkCollection.innerHTML = '';
-            Object.assign(finalBulkCollection.style, {
-                position: 'absolute',
-                left: '-9999px',
-                top: '0',
-                visibility: 'visible',
-                display: 'block',
-                opacity: '1'
-            });
             previewWrap.scrollTop = 0;
             updateBulkPdfPrepProgress(0, dataKelas.length, 'Memulai…');
             setBulkPdfPrepOverlayVisible(true);
             await waitForNextPaint();
 
             try {
+                const bulkOpt = getBulkClassPdfOptions(
+                    `Transkrip_Kelas_${kelasDipilih}.pdf`,
+                    previewBulk
+                );
+                let worker = null;
+                let renderedCount = 0;
+
                 for (let i = 0; i < dataKelas.length; i++) {
                     const murid = dataKelas[i];
                     const step = i + 1;
@@ -1822,63 +1819,66 @@
                         `Memuat transkrip: ${murid.nama}`
                     );
 
-                    const frag = document.createRange().createContextualFragment(buildTranskripHTML(murid));
-                    previewBulk.appendChild(frag);
-
-                    const pages = previewBulk.querySelectorAll('.pdf-page');
-                    const lastPage = pages[pages.length - 1];
-                    if (lastPage) lastPage.scrollIntoView({ block: 'nearest', behavior: 'instant' });
+                    const currentHTML = buildTranskripHTML(murid);
+                    previewBulk.innerHTML = currentHTML;
+                    const firstPage = previewBulk.querySelector('.pdf-page');
+                    if (firstPage) firstPage.scrollIntoView({ block: 'nearest', behavior: 'instant' });
 
                     updateBulkPdfPrepProgress(step, dataKelas.length, `Merender: ${murid.nama} (${step}/${dataKelas.length})`);
 
-                    const minTotalScrollPx = Math.max(200, Math.floor(step * 200 * 0.85));
+                    const minTotalScrollPx = Math.max(200, Math.floor(1 * 200 * 0.85));
                     await waitForTranscriptInDom(previewBulk, {
-                        minPages: step,
+                        minPages: 1,
                         minTotalScrollPx
                     });
 
                     await waitForBulkPreviewLayoutIdle(previewBulk);
+                    await waitForNextPaint();
+                    await sleep(300);
 
-                    // Collection Method: salin halaman yang sudah ter-render ke kontainer final.
-                    if (lastPage) {
-                        const clonedPage = lastPage.cloneNode(true);
-                        finalBulkCollection.appendChild(clonedPage);
+                    if (!firstPage) {
+                        console.warn(`[PDF Massal] Halaman transkrip "${murid.nama}" tidak terbentuk (dilewati).`);
+                        previewBulk.innerHTML = '';
+                        await waitForNextPaint();
+                        continue;
                     }
 
+                    console.log('Sedang memproses PDF untuk murid:', murid.nama);
+                    if (!worker) {
+                        worker = html2pdf()
+                            .set(bulkOpt)
+                            .from(previewBulk)
+                            .toContainer()
+                            .toCanvas()
+                            .toPdf();
+                    } else {
+                        worker = worker
+                            .get('pdf')
+                            .then((pdf) => {
+                                pdf.addPage();
+                            })
+                            .from(previewBulk)
+                            .toContainer()
+                            .toCanvas()
+                            .toPdf();
+                    }
+
+                    await worker.get('pdf');
+                    renderedCount++;
                     await sleep(500);
                 }
 
-                updateBulkPdfPrepProgress(
-                    dataKelas.length,
-                    dataKelas.length,
-                    'Memverifikasi koleksi halaman…'
-                );
+                if (!worker || renderedCount === 0) {
+                    throw new Error('Tidak ada halaman yang berhasil dirender ke PDF.');
+                }
 
-                const minTotalScrollPx = Math.max(
-                    200,
-                    Math.floor(dataKelas.length * 200 * 0.85)
-                );
-
-                await waitForTranscriptInDom(finalBulkCollection, {
-                    minPages: dataKelas.length,
-                    minTotalScrollPx
-                });
-                await waitForBulkPreviewLayoutIdle(finalBulkCollection);
-                await new Promise((r) => setTimeout(r, 500));
-                await waitForNextPaint();
-
-                // useCORS sudah aktif dari getPdfOptions/getBulkClassPdfOptions.
-                const bulkOpt = getBulkClassPdfOptions(
-                    `Transkrip_Kelas_${kelasDipilih}.pdf`,
-                    finalBulkCollection
-                );
-                await html2pdf().set(bulkOpt).from(finalBulkCollection).save();
+                updateBulkPdfPrepProgress(renderedCount, dataKelas.length, `Menyimpan PDF (${renderedCount} halaman)…`);
+                await worker.save();
             } catch (err) {
                 console.error(err);
                 alert('Gagal membuat PDF kelas. Periksa data murid dan coba lagi.');
             } finally {
                 previewBulk.innerHTML = '';
-                finalBulkCollection.innerHTML = '';
                 previewWrap.scrollTop = 0;
                 const barReset = document.getElementById('bulkPdfPrepProgressBar');
                 if (barReset) barReset.style.width = '0%';
