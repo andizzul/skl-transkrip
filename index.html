@@ -1336,7 +1336,7 @@
             
             // STRICT PDF PAGE CONTAINER
             return `
-                <div class="pdf-page" style="width: 210mm; height: 297mm; padding: 11mm 18mm 10mm 18mm; box-sizing: border-box; background: white; color: black; position: relative; margin: 0 auto;">
+                <div class="pdf-page" style="width: 210mm; height: 297mm; padding: 11mm 18mm 10mm 18mm; box-sizing: border-box; background: white; color: black; position: relative; margin: 0 auto; page-break-after: auto; break-after: auto;">
                     
                     <!-- Kop Surat -->
                     <div style="border-bottom: 2px solid #000; padding-bottom: 8px; margin-bottom: 15px;">
@@ -1877,6 +1877,23 @@
 
                 if (!worker || renderedCount === 0) {
                     throw new Error('Tidak ada halaman yang berhasil dirender ke PDF.');
+                }
+
+                const pdfObj = await worker.get('pdf');
+                let totalPages =
+                    typeof pdfObj.getNumberOfPages === 'function'
+                        ? pdfObj.getNumberOfPages()
+                        : (pdfObj.internal && typeof pdfObj.internal.getNumberOfPages === 'function'
+                              ? pdfObj.internal.getNumberOfPages()
+                              : 0);
+                while (totalPages > renderedCount && typeof pdfObj.deletePage === 'function') {
+                    pdfObj.deletePage(totalPages);
+                    totalPages =
+                        typeof pdfObj.getNumberOfPages === 'function'
+                            ? pdfObj.getNumberOfPages()
+                            : (pdfObj.internal && typeof pdfObj.internal.getNumberOfPages === 'function'
+                                  ? pdfObj.internal.getNumberOfPages()
+                                  : 0);
                 }
 
                 updateBulkPdfPrepProgress(renderedCount, dataKelas.length, `Menyimpan PDF (${renderedCount} halaman)…`);
