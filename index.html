@@ -1228,19 +1228,38 @@
             let rowStyle = '';
             let tableFontSize = '12pt';
             let tdPadding = '5px 8px';
+            let tableBottomGap = '25px';
 
             let estimatedRows = totalMapel + (showKelompok ? 2 : 0) + (showRataRata ? 1 : 0);
 
-            if (!showKelompok && !showRataRata && totalMapel <= 12) {
+            if (showKelompok) {
+                // Saat kelompok aktif, tinggi baris disesuaikan agar tabel tidak menabrak area tanda tangan.
+                if (estimatedRows <= 14) {
+                    tableFontSize = '11pt';
+                    tdPadding = '2px 5px';
+                    rowStyle = 'height: 0.66cm;';
+                } else if (estimatedRows <= 18) {
+                    tableFontSize = '10.5pt';
+                    tdPadding = '2px 4px';
+                    rowStyle = 'height: 0.60cm;';
+                } else {
+                    tableFontSize = '10pt';
+                    tdPadding = '1px 3px';
+                    rowStyle = 'height: 0.56cm;';
+                }
+                tableBottomGap = '165px';
+            } else if (!showRataRata && totalMapel <= 12) {
                 // Standar statis 0.9cm apabila tanpa kelompok dan rata-rata
                 tdPadding = '0 8px';
                 rowStyle = 'height: 0.9cm;';
+                tableBottomGap = '150px';
             } else {
                 // Auto-fitting Algorithm
-                if (estimatedRows <= 12) { tableFontSize = '11pt'; tdPadding = '4px 6px'; }
-                else if (estimatedRows <= 16) { tableFontSize = '10.5pt'; tdPadding = '3px 5px'; }
-                else if (estimatedRows <= 20) { tableFontSize = '10pt'; tdPadding = '2px 4px'; }
-                else { tableFontSize = '9pt'; tdPadding = '1px 2px'; }
+                if (estimatedRows <= 12) { tableFontSize = '11pt'; tdPadding = '3px 5px'; rowStyle = 'height: 0.72cm;'; }
+                else if (estimatedRows <= 16) { tableFontSize = '10.5pt'; tdPadding = '2px 4px'; rowStyle = 'height: 0.64cm;'; }
+                else if (estimatedRows <= 20) { tableFontSize = '10pt'; tdPadding = '1px 3px'; rowStyle = 'height: 0.58cm;'; }
+                else { tableFontSize = '9pt'; tdPadding = '1px 2px'; rowStyle = 'height: 0.52cm;'; }
+                tableBottomGap = '155px';
             }
 
             let nilaiRows = '';
@@ -1372,7 +1391,7 @@
                     </div>
                     
                     <!-- Tabel Nilai -->
-                    <table style="width: 100%; border-collapse: collapse; margin-bottom: 25px;">
+                    <table style="width: 100%; border-collapse: collapse; margin-bottom: ${tableBottomGap};">
                         <thead>
                             <tr style="background-color: #f2f2f2;">
                                 <th style="border: 1px solid #000; padding: 8px; width: 50px; font-weight: bold; font-size: 12pt;">No.</th>
@@ -1387,8 +1406,8 @@
                     </table>
                     
                     <!-- Tanda Tangan Footer -->
-                    <div style="display: flex; justify-content: flex-end; font-size: 12pt;">
-                        <div style="text-align: left; width: 300px;">
+                    <div style="position: absolute; right: 18mm; bottom: 17mm; font-size: 12pt;">
+                        <div style="text-align: left; width: 300px; margin: 0;">
                             <p style="margin: 0; line-height: 1.2;">${tmptTerbit}, ${tglTerbit}</p>
                             <p style="margin: 0; line-height: 1.2;">Kepala,</p>
                             <!-- Extra Padding Vertical for Kepsek Signature Alignment -->
@@ -1481,7 +1500,6 @@
         async function waitForTranscriptInDom(container, options = {}) {
             const minPages = options.minPages != null ? options.minPages : 1;
             const minPageHeightPx = options.minPageHeightPx != null ? options.minPageHeightPx : 200;
-            const maxAttempts = options.maxAttempts != null ? options.maxAttempts : 700;
             const minTotalScrollPx =
                 options.minTotalScrollPx != null
                     ? options.minTotalScrollPx
@@ -1501,6 +1519,7 @@
 
             await waitForNextPaint();
 
+            const maxAttempts = 400;
             for (let attempt = 0; attempt < maxAttempts; attempt++) {
                 void container.offsetWidth;
                 void container.offsetHeight;
@@ -1527,70 +1546,6 @@
             await waitForImagesInContainer(container);
             void container.offsetWidth;
             await sleep(120);
-        }
-
-        async function withTimeout(promise, ms, timeoutMessage) {
-            let timer;
-            try {
-                return await Promise.race([
-                    promise,
-                    new Promise((_, reject) => {
-                        timer = setTimeout(() => reject(new Error(timeoutMessage)), ms);
-                    })
-                ]);
-            } finally {
-                clearTimeout(timer);
-            }
-        }
-
-        function dataUrlToBlobUrl(dataUrl, blobUrls) {
-            const match = dataUrl.match(/^data:([^;,]+)?(;base64)?,(.*)$/);
-            if (!match) return dataUrl;
-            const mime = match[1] || 'application/octet-stream';
-            const isBase64 = !!match[2];
-            const payload = match[3] || '';
-            let byteString;
-            if (isBase64) {
-                byteString = atob(payload);
-            } else {
-                byteString = decodeURIComponent(payload);
-            }
-            const bytes = new Uint8Array(byteString.length);
-            for (let i = 0; i < byteString.length; i++) {
-                bytes[i] = byteString.charCodeAt(i);
-            }
-            const blobUrl = URL.createObjectURL(new Blob([bytes], { type: mime }));
-            blobUrls.push(blobUrl);
-            return blobUrl;
-        }
-
-        function applySafeLogoSourcesForBulkPdf(blobUrls) {
-            const original = {
-                kiri: dataSekolah.logoKiri,
-                kanan: dataSekolah.logoKanan
-            };
-
-            const toSafeSrc = (src, side) => {
-                if (!src || typeof src !== 'string') return src;
-                if (src.startsWith('data:')) return dataUrlToBlobUrl(src, blobUrls);
-                if (src.startsWith('blob:')) return src;
-                if (src.startsWith('file:')) {
-                    console.warn(`[PDF Massal] Logo ${side} menggunakan URL file:// dan bisa diblokir browser:`, src);
-                    return src;
-                }
-                return src;
-            };
-
-            dataSekolah.logoKiri = toSafeSrc(dataSekolah.logoKiri, 'kiri');
-            dataSekolah.logoKanan = toSafeSrc(dataSekolah.logoKanan, 'kanan');
-            return original;
-        }
-
-        function restoreSafeLogoSourcesAfterBulkPdf(originalLogoSources, blobUrls) {
-            dataSekolah.logoKiri = originalLogoSources.kiri;
-            dataSekolah.logoKanan = originalLogoSources.kanan;
-            blobUrls.forEach((url) => URL.revokeObjectURL(url));
-            blobUrls.length = 0;
         }
 
         function setPdfExportBackdrop(visible) {
@@ -1834,8 +1789,6 @@
             const previewWrap = document.getElementById('bulkPdfPrepPreviewWrap');
             const titleEl = document.getElementById('bulkPdfPrepTitle');
             const finalBulkCollection = document.getElementById('final-bulk-collection');
-            const tempLogoBlobUrls = [];
-            const originalLogoSources = applySafeLogoSourcesForBulkPdf(tempLogoBlobUrls);
 
             if (!previewBulk || !previewWrap || !finalBulkCollection) {
                 alert('Kontainer pratinjau massal tidak ditemukan.');
@@ -1859,7 +1812,8 @@
             await waitForNextPaint();
 
             try {
-                for (const [i, murid] of dataKelas.entries()) {
+                for (let i = 0; i < dataKelas.length; i++) {
+                    const murid = dataKelas[i];
                     const step = i + 1;
 
                     updateBulkPdfPrepProgress(
@@ -1868,49 +1822,28 @@
                         `Memuat transkrip: ${murid.nama}`
                     );
 
-                    // Render satu murid per siklus agar html2canvas/html2pdf selalu menangkap DOM yang stabil.
-                    previewBulk.innerHTML = buildTranskripHTML(murid);
-                    await waitForNextPaint();
+                    const frag = document.createRange().createContextualFragment(buildTranskripHTML(murid));
+                    previewBulk.appendChild(frag);
 
                     const pages = previewBulk.querySelectorAll('.pdf-page');
-                    const firstPage = pages[0];
-                    if (firstPage) firstPage.scrollIntoView({ block: 'nearest', behavior: 'instant' });
+                    const lastPage = pages[pages.length - 1];
+                    if (lastPage) lastPage.scrollIntoView({ block: 'nearest', behavior: 'instant' });
 
                     updateBulkPdfPrepProgress(step, dataKelas.length, `Merender: ${murid.nama} (${step}/${dataKelas.length})`);
 
-                    const minTotalScrollPx = Math.max(200, Math.floor(1 * 200 * 0.85));
-                    try {
-                        await withTimeout(
-                            waitForTranscriptInDom(previewBulk, {
-                                minPages: 1,
-                                minTotalScrollPx,
-                                maxAttempts: 650
-                            }),
-                            5000,
-                            `Timeout render transkrip murid ${murid.nama}`
-                        );
-                        await withTimeout(
-                            waitForBulkPreviewLayoutIdle(previewBulk),
-                            5000,
-                            `Timeout stabilisasi layout murid ${murid.nama}`
-                        );
-                    } catch (renderErr) {
-                        console.warn(`[PDF Massal] Gagal render murid "${murid.nama}" (dilewati).`, renderErr);
-                        previewBulk.innerHTML = '';
-                        await waitForNextPaint();
-                        continue;
-                    }
+                    const minTotalScrollPx = Math.max(200, Math.floor(step * 200 * 0.85));
+                    await waitForTranscriptInDom(previewBulk, {
+                        minPages: step,
+                        minTotalScrollPx
+                    });
+
+                    await waitForBulkPreviewLayoutIdle(previewBulk);
 
                     // Collection Method: salin halaman yang sudah ter-render ke kontainer final.
-                    if (firstPage) {
-                        const clonedPage = firstPage.cloneNode(true);
-                        clonedPage.style.pageBreakAfter = 'always';
+                    if (lastPage) {
+                        const clonedPage = lastPage.cloneNode(true);
                         finalBulkCollection.appendChild(clonedPage);
                     }
-
-                    // Lepas subtree sementara setelah setiap halaman untuk menekan konsumsi memori browser.
-                    previewBulk.innerHTML = '';
-                    await waitForNextPaint();
 
                     await sleep(500);
                 }
@@ -1921,53 +1854,29 @@
                     'Memverifikasi koleksi halaman…'
                 );
 
-                const expectedPages = dataKelas.length;
-                const minTotalScrollPx = Math.max(200, Math.floor(expectedPages * 200 * 0.85));
+                const minTotalScrollPx = Math.max(
+                    200,
+                    Math.floor(dataKelas.length * 200 * 0.85)
+                );
 
                 await waitForTranscriptInDom(finalBulkCollection, {
-                    minPages: expectedPages,
-                    minTotalScrollPx,
-                    maxAttempts: 1200
+                    minPages: dataKelas.length,
+                    minTotalScrollPx
                 });
                 await waitForBulkPreviewLayoutIdle(finalBulkCollection);
-                await new Promise((r) => setTimeout(r, 1500));
+                await new Promise((r) => setTimeout(r, 500));
                 await waitForNextPaint();
-
-                const finalPages = finalBulkCollection.querySelectorAll('.pdf-page').length;
-                if (finalPages !== expectedPages) {
-                    console.warn(`[PDF Massal] Buffer halaman belum lengkap (${finalPages}/${expectedPages}), proses akan tetap dilanjutkan.`);
-                }
 
                 // useCORS sudah aktif dari getPdfOptions/getBulkClassPdfOptions.
                 const bulkOpt = getBulkClassPdfOptions(
                     `Transkrip_Kelas_${kelasDipilih}.pdf`,
                     finalBulkCollection
                 );
-                const worker = html2pdf().set(bulkOpt).from(finalBulkCollection).toPdf();
-                let pdfObject = await worker.get('pdf');
-                let pdfPages = 0;
-                const pageCountFromPdf = (obj) =>
-                    typeof obj.getNumberOfPages === 'function'
-                        ? obj.getNumberOfPages()
-                        : (obj.internal && typeof obj.internal.getNumberOfPages === 'function'
-                              ? obj.internal.getNumberOfPages()
-                              : 0);
-
-                for (let attempt = 0; attempt < 10; attempt++) {
-                    pdfPages = pageCountFromPdf(pdfObject);
-                    if (pdfPages >= Math.max(1, finalPages)) break;
-                    await sleep(500);
-                    pdfObject = await worker.get('pdf');
-                }
-                if (!pdfPages || pdfPages < Math.max(1, finalPages)) {
-                    console.warn(`[PDF Massal] Objek PDF belum penuh (${pdfPages}/${finalPages}), mencoba simpan hasil saat ini.`);
-                }
-                await worker.save();
+                await html2pdf().set(bulkOpt).from(finalBulkCollection).save();
             } catch (err) {
                 console.error(err);
                 alert('Gagal membuat PDF kelas. Periksa data murid dan coba lagi.');
             } finally {
-                restoreSafeLogoSourcesAfterBulkPdf(originalLogoSources, tempLogoBlobUrls);
                 previewBulk.innerHTML = '';
                 finalBulkCollection.innerHTML = '';
                 previewWrap.scrollTop = 0;
